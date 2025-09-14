@@ -1,5 +1,5 @@
 # ScoreHOI: Physically Plausible Reconstruction of Human-Object Interaction via Score-Guided Diffusion (ICCV 2025)
-*[Ao Li](https://rammusleo.github.io/), [Jinpeng Liu](https://moonsliu.github.io/), [Yixuan Zhu](https://eternalevan.github.io/), [Yansong Tang†](https://andytang15.github.io/)*
+*[Ao Li](https://rammusleo.github.io/), [Jinpeng Liu](https://moonsliu.github.io/), [Yixuan Zhu](https://eternalevan.github.io/), [Yansong Tang](https://andytang15.github.io/)*
 ----
 [**[Arxiv Paper]**](https://arxiv.org/abs/2509.07920)
 
@@ -9,7 +9,7 @@ ScoreHOI is an innovative framework for <ins>**human-object interaction reconstr
 
 ## 📋 To-Do List
 
-- [ ] Quick Demo.
+- [ ] Quick Demo. (Coming Soon! Will be in no longer than 2 days)
 - [ ] Release model and inference code.
 - [ ] Release code for training dataloader.
 
