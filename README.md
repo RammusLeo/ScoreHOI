@@ -22,8 +22,15 @@ ScoreHOI is an innovative framework for <ins>**human-object interaction reconstr
 
 We recommend you to use an [Anaconda](https://www.anaconda.com/) virtual environment. If you have installed Anaconda, run the following commands to create and activate a virtual environment.
 ``` bash
-conda env create -f environment.yaml
-conda activate scorehoi
+
+conda create -n scorehoi python=3.9
+conda activate scorehoi 
+
+# Install PyTorch
+pip install torch==2.0.0 torchvision==0.15.1 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu118
+
+# Other requirements
+pip install -r requirements.txt
 ```
 
 ### 💁 2. Quick Demo
