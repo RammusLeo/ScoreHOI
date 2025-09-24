@@ -2,4 +2,4 @@
 *.pth
 *.pth.tar
 **/data
-**/experiments
+**/experiment
