@@ -9,9 +9,9 @@ import torchvision.transforms as transforms
 
 from core.config import cfg, logger
 # from dataset.merge_dataset import MergeDataset
-from dataset.merge_dataset_pointnet import MergeDatasetObj
-from dataset.merge_dataset_pointnet_trans import MergeDatasetObjTrans
-from dataset.merge_dataset_pointnet_imhd import MergeDatasetObjIMHD
+# from dataset.merge_dataset_pointnet import MergeDatasetObj
+# from dataset.merge_dataset_pointnet_trans import MergeDatasetObjTrans
+# from dataset.merge_dataset_pointnet_imhd import MergeDatasetObjIMHD
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 

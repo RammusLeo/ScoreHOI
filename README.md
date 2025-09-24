@@ -35,6 +35,10 @@ pip install -r requirements.txt
 
 ### 💁 2. Quick Demo
 
+```
+python main/demo_test.py --gpu 0 --dataset behave --checkpoint checkpoints/backbone.pth --ckpt_path checkpoints/diffusion.pth.tar --exp demo
+```
+
 ### 💾 3. Data Preparation
 
 <!-- We prepare the data in a samilar way as [3DCrowdNet](https://github.com/hongsukchoi/3DCrowdNet_RELEASE) & [JOTR](https://github.com/hongsukchoi/3DCrowdNet_RELEASE/blob/main/assets/directory.md). Please refer to [here](https://github.com/hongsukchoi/3DCrowdNet_RELEASE/blob/main/assets/directory.md) for *dataset*, *SMPL model*, *VPoser model*. 

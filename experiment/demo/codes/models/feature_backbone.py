@@ -18,7 +18,7 @@ class FeatureBackbone(nn.Module):
         self.crformer = CRFormer()
         self.smplh_layer = copy.deepcopy(smplh.layer['neutral'])
 
-        # self.init_weights()
+        self.init_weights()
         self.trainable_modules = [self.hand4whole, self.objregressor, self.contactformer, self.crformer]
 
     def init_weights(self):

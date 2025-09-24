@@ -1,4 +1,5 @@
 import numpy as np
+import time  # 添加这行导入
 from typing import Dict, Tuple
 from yacs.config import CfgNode
 import torch
@@ -8,7 +9,7 @@ from einops import reduce
 from functools import partial
 
 from diffusion.diff_utils.utils import *
-from funcs_utils import rot6d_to_rotmat, rot6d_to_aa, rotmat_to_6d, batch_rodrigues
+from utils.funcs_utils import rot6d_to_rotmat, rot6d_to_aa, rotmat_to_6d, batch_rodrigues
 # from diffusion.diff_utils.geometry import aa_to_rotmat, rot6d_to_rotmat, rot6d_to_aa, rotmat_to_6d
 from diffusion.diff_utils.guidance_losses import keypoint_fitting_loss, multiview_loss, smoothness_loss, interaction_loss, object_mask_loss
 
@@ -16,7 +17,7 @@ import copy
 import pickle
 from models.templates import smplh
 
-class GaussianDiffusion(nn.Module):
+class GaussianDiffusionBetas(nn.Module):
     """ Class for the Diffusion Process (forward process and sampling methods). """
 
     def __init__(self, cfg: CfgNode, model: nn.Module, **kwargs) -> None:
@@ -73,10 +74,10 @@ class GaussianDiffusion(nn.Module):
         ## Denoising model
         self.model = model.to(self.device)
         self.use_betas = self.model.use_betas
-        # if self.use_betas:
-        #     betas_stats = np.load(cfg.DIFFUSION.beta_stats)
-        #     self.betas_min = torch.from_numpy(betas_stats["betas_min"]).to(self.device)
-        #     self.betas_max = torch.from_numpy(betas_stats["betas_max"]).to(self.device)
+        if self.use_betas:
+            betas_stats = np.load(cfg.DIFFUSION.beta_stats, allow_pickle=True)
+            self.betas_min = torch.from_numpy(betas_stats["betas_min"]).to(self.device).float()
+            self.betas_max = torch.from_numpy(betas_stats["betas_max"]).to(self.device).float()
         self.loss_type = cfg.DIFFUSION.DENOISING_MODEL.loss_type
         self.objective = cfg.DIFFUSION.DENOISING_MODEL.objective
         assert self.objective in {"pred_noise", "pred_x0"}, "must be pred_noise or pred_x0"
@@ -113,7 +114,17 @@ class GaussianDiffusion(nn.Module):
             return F.mse_loss
         else:
             raise ValueError(f"invalid loss type {self.loss_type}")
-        
+
+    def normalize_betas(self, betas):
+        """Normalize SMPL betas to [-1, 1]."""
+        return 2 * (betas - self.betas_min) / (self.betas_max - self.betas_min) - 1
+
+
+    def unnormalize_betas(self, betas):
+        """Get back the unnormalized SMPL betas."""
+        return 0.5 * (self.betas_max - self.betas_min) * (betas + 1) + self.betas_min
+
+
     def load_weights(self, model_dict, strict=False):
         self.model.load_state_dict(model_dict, strict=strict)
         
@@ -206,13 +217,12 @@ class GaussianDiffusion(nn.Module):
         pose = pose_6d.reshape(batch_size, -1)  # (bs, 52*6)
         # obj = torch.cat((obj_pose_6d.reshape(batch_size, -1), obj_trans), dim=-1)  # (bs, 6 + 3)
         input_data = torch.cat((pose, obj_pose_6d.reshape(batch_size, -1), obj_trans), dim=-1)  # (bs, 52*6 + 6 + 3)
-        # if self.use_betas:
-        #     # Normalize betas to [-1, 1] and concatenate them with the SMPL pose parameters.
-        #     scaled_betas = normalize_betas(batch["targets"]["smpl_shape"], self.betas_min, self.betas_max)
-        #     params = torch.cat((pose, scaled_betas), dim=1)
-        # else:
-        #     params = pose
-        params = input_data.float()
+        if self.use_betas:
+            # Normalize betas to [-1, 1] and concatenate them with the SMPL pose parameters.
+            scaled_betas = normalize_betas(batch["targets"]["smpl_shape"], self.betas_min, self.betas_max)
+            params = torch.cat((input_data, scaled_betas), dim=1).float()
+        else:
+            params = input_data.float()
 
         # Generate the input noise.
         noise = default(noise, lambda: torch.randn_like(params))
@@ -331,10 +341,11 @@ class GaussianDiffusion(nn.Module):
             # pred_pose_6d = x_start[:, :-10] if self.use_betas else x_start
             pred_pose_6d = x_start[:, : 52 * 6]
             pred_obj_pose_6d = x_start[:, 52 * 6: 52 * 6 + 6]
-            pred_obj_pose_trans = x_start[:, 52 * 6 + 6:]
+            pred_obj_pose_trans = x_start[:, 52 * 6 + 6: 52 * 6 + 9]
+            pred_shape = x_start[:, 52 * 6 + 9:] if self.use_betas else None
 
             human_pose_ = rot6d_to_aa(pred_pose_6d.reshape(-1,6)).reshape(bs_times_samples,-1)
-            human_shape_ = batch['inputs']['pred_betas']
+            human_shape_ = self.unnormalize_betas(pred_shape).float() if self.use_betas else None
             outputs = self.smplh_layer(betas=human_shape_, global_orient=human_pose_[:, :3], body_pose=human_pose_[:, 3:66], left_hand_pose=human_pose_[:, 66:111], right_hand_pose=human_pose_[:, 111:])
             human_verts, human_joints = outputs.vertices - outputs.joints[:, [smplh.root_joint_idx]], outputs.joints - outputs.joints[:, [smplh.root_joint_idx]]
             human_verts = smplh.downsample(human_verts)
@@ -377,7 +388,6 @@ class GaussianDiffusion(nn.Module):
                 loss_omask = torch.tensor(0, device=self.device)
             
 
-            # if self.interaction_guidance:
             contact_h = batch["inputs"]["pred_h_contacts"]
             contact_o = batch["inputs"]["pred_o_contacts"]
             if 'pred_o_f_contacts' in batch["inputs"]:
@@ -388,10 +398,7 @@ class GaussianDiffusion(nn.Module):
             loss_inter = self.cfg.DIFFUSION.GUIDANCE.w_inter * loss_inter
             loss_colli = self.cfg.DIFFUSION.GUIDANCE.w_colli * loss_colli
             loss_inter_o_f = self.cfg.DIFFUSION.GUIDANCE.w_inter_o_f * loss_inter_o_f
-            # else:
-            #     loss_inter = torch.tensor(0, device=self.device)
-
-            loss = loss_kp + loss_inter + loss_colli + loss_inter_o_f + loss_omask
+            loss = loss_kp + loss_inter + loss_omask + loss_colli + loss_inter_o_f
             if self.early_stop:
                 mask = self.early_stop_obj.get_stop_mask(loss)
                 loss[mask] = 0.
@@ -400,7 +407,7 @@ class GaussianDiffusion(nn.Module):
 
 
     @torch.no_grad()
-    def sample(self, batch: Dict, cond_img_feats: torch.Tensor, cond_geo_feats: torch.Tensor, batch_size: int):
+    def sample(self, batch: Dict, cond_img_feats: torch.Tensor, cond_geo_feats: torch.Tensor, batch_size: int, use_guidance=True):
         """
         Run vanilla DDIM or DDIM with score guidance.
         Args:
@@ -408,8 +415,8 @@ class GaussianDiffusion(nn.Module):
             cond_feats: Tensor of shape [B*N, C] containing the images features. (B: batch_size, N: number of samples to draw for each image in the batch, C: dimension of image feature).
             batch_size: B*N
         """
-        shape = (batch_size, self.model.diffusion_dim)
-        sample_fn = self.ddim_with_guidance if self.use_guidance else self.ddim_vanilla
+        shape = (batch_size, self.model.diffusion_dim + 10)
+        sample_fn = self.ddim_with_guidance if use_guidance else self.ddim_vanilla
         return sample_fn(batch, cond_img_feats, cond_geo_feats, shape)
 
 
@@ -435,7 +442,7 @@ class GaussianDiffusion(nn.Module):
             Dictionary with x_start.
         """
         batch_size = shape[0]
-        times = list(range(0, self.sample_start + 1, self.ddim_step_size))
+        times = list(range(0, self.cfg.DIFFUSION.TRAIN.sample_start + 1, self.cfg.DIFFUSION.TRAIN.ddim_step_size))
         times_next = [-1] + list(times[:-1])
         time_pairs = list(
             reversed(list(zip(times[1:], times_next[1:])))
@@ -557,6 +564,10 @@ class GaussianDiffusion(nn.Module):
                 alpha_next = self.alphas_cumprod[time_next]
                 sigma = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
                 c = (1 - alpha_next - sigma**2).sqrt()
+                # 使用当前时间戳作为随机种子
+                torch.manual_seed(int(time.time() * 1000000))
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed(int(time.time() * 1000000))
                 noise = torch.randn_like(x_t)
                 x_t = x_start * alpha_next.sqrt() + c * pred_noise + sigma * noise
 
@@ -597,8 +608,8 @@ class GaussianDiffusion(nn.Module):
         batch_size = shape[0]
 
         ### DDIM Inversion ###
-        for time, time_next in time_pairs_inv:
-            time_cond = torch.full((batch_size,), time, device=self.device, dtype=torch.long)
+        for time_step, time_next in time_pairs_inv:
+            time_cond = torch.full((batch_size,), time_step, device=self.device, dtype=torch.long)
             pred_noise, x_start = self.model_predictions(
                 x_t,
                 time_cond,
@@ -611,8 +622,8 @@ class GaussianDiffusion(nn.Module):
             x_t = x_start * alpha_next.sqrt() + pred_noise * (1 - alpha_next).sqrt()
 
         ### DDIM Sample Loop ###
-        for time, time_next in time_pairs:
-            time_cond = torch.full((batch_size,), time, device=self.device, dtype=torch.long)
+        for time_step, time_next in time_pairs:
+            time_cond = torch.full((batch_size,), time_step, device=self.device, dtype=torch.long)
             pred_noise, x_start = self.model_predictions(
                 x_t,
                 time_cond,
@@ -621,10 +632,14 @@ class GaussianDiffusion(nn.Module):
                 clip_x_start=clip_denoised,
                 inference=True
             )
-            alpha = self.alphas_cumprod[time]
+            alpha = self.alphas_cumprod[time_step]
             alpha_next = self.alphas_cumprod[time_next]
             sigma = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
             c = (1 - alpha_next - sigma**2).sqrt()
+            time_stamp = int(time.time() * 1000000)
+            torch.cuda.manual_seed(time_stamp)
+            # if torch.cuda.is_available():
+            #     torch.cuda.manual_seed(int(time.time() * 1000000))
             noise = torch.randn_like(x_t)
             x_t = x_start * alpha_next.sqrt() + c * pred_noise + sigma * noise
 
@@ -636,6 +651,79 @@ class GaussianDiffusion(nn.Module):
         #             if self.early_stop
         #             else {'x_0': x_start, 'camera_translation': self.camera_translation}
         # )
+        output = {
+            "x_0": x_start,
+            "camera_translation": self.camera_translation,
+            "x_t": x_t,
+            "noise": noise
+        }
+        return output
+
+    @torch.no_grad()
+    def one_step_ddim_without_guidance(
+        self,
+        batch: Dict,
+        x_t,
+        y_input,
+        time_pairs_inv,
+        time_pairs,
+        shape: Tuple,
+        clip_denoised: bool = False,
+        eta: float = 0.0,
+    ) -> Dict:
+        """
+        DDIM sampling with guidance.
+        Args:
+            batch: Dictionary with the dataset, labels and regression predictions.
+            cond_feats: Tensor of shape [B*N, C] with the image feautres.
+            shape : Tuple with the shape of the parameters used in the diffusion model.
+            clip_denoised: Flag that indicates whether the denoised result should be scaled to [-1, 1].
+            eta: DDIM eta parameter, eta=0 corresponding to deterministic DDIM sampling.
+        Returns:
+            Dictionary with the refined x_start and optionally the optimized camera_translation.
+        """
+
+        batch_size = shape[0]
+
+        ### DDIM Inversion ###
+        for time_step, time_next in time_pairs_inv:
+            time_cond = torch.full((batch_size,), time_step, device=self.device, dtype=torch.long)
+            pred_noise, x_start = self.model_predictions(
+                x_t,
+                time_cond,
+                y = y_input,
+                batch=batch,
+                clip_x_start=clip_denoised,
+                inverse=True,
+            )
+            alpha_next = self.alphas_cumprod[time_next]
+            x_t = x_start * alpha_next.sqrt() + pred_noise * (1 - alpha_next).sqrt()
+
+        ### DDIM Sample Loop ###
+        for time_step, time_next in time_pairs:
+            time_cond = torch.full((batch_size,), time_step, device=self.device, dtype=torch.long)
+            pred_noise, x_start = self.model_predictions(
+                x_t,
+                time_cond,
+                y = y_input,
+                batch=batch,
+                clip_x_start=clip_denoised,
+                inference=False
+            )
+            alpha = self.alphas_cumprod[time_step]
+            alpha_next = self.alphas_cumprod[time_next]
+            sigma = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
+            c = (1 - alpha_next - sigma**2).sqrt()
+            time_stamp = int(time.time() * 1000000)
+            torch.cuda.manual_seed(time_stamp)
+            # if torch.cuda.is_available():
+            #     torch.cuda.manual_seed(int(time.time() * 1000000))
+            noise = torch.randn_like(x_t)
+            x_t = x_start * alpha_next.sqrt() + c * pred_noise + sigma * noise
+
+        # Return the output.
+        if self.camera_translation is not None:
+            self.camera_translation = self.camera_translation.detach()
         output = {
             "x_0": x_start,
             "camera_translation": self.camera_translation,
@@ -669,9 +757,9 @@ class GaussianDiffusion(nn.Module):
 
         x_start = pred_pose_6d.reshape(true_batch_size, -1)
         # Potentially include SMPL betas in x_start.
-        # if self.use_betas:
-        #     scaled_betas = normalize_betas(batch["inputs"]["pred_betas"], self.betas_min, self.betas_max)
-        #     x_start = torch.cat((x_start, scaled_betas), dim=1)
+        if self.use_betas:
+            scaled_betas = normalize_betas(batch["inputs"]["pred_betas"], self.betas_min, self.betas_max)
+            x_start = torch.cat((x_start, scaled_betas), dim=1).float()
         x_start = x_start.unsqueeze(1).repeat(1, num_samples, 1).reshape(batch_size, -1)
 
         time_cond = torch.full( (batch_size,), timestep, device=self.device, dtype=torch.long)
@@ -690,9 +778,14 @@ class GaussianDiffusion(nn.Module):
         cond_img_feats: torch.Tensor,
         cond_geo_feats: torch.Tensor,
         shape: Tuple,
+        force_sample_start=-1
     ):
         batch_size = shape[0]
-        times = list(range(0, self.sample_start + 1, self.ddim_step_size))
+        if force_sample_start > 0:
+            sample_start = force_sample_start
+        else:
+            sample_start = self.sample_start
+        times = list(range(0, sample_start + 1, self.ddim_step_size))
         times_next = [-1] + list(times[:-1])
         time_pairs = list(
             reversed(list(zip(times[1:], times_next[1:])))

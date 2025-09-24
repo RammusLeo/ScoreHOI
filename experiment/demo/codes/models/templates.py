@@ -211,10 +211,10 @@ class InteractObjectDict(object):
             obj_info_path = osp.join('data', 'base_data', 'object_models', 'intercap', '_info.json')
             with open(obj_info_path) as f:
                 self.obj_info_intercap = json.load(f)
-            obj_info_path = osp.join('data', 'base_data', 'object_models', 'imhd', 'imhd_bps.pkl')
+            obj_info_path = 'data/base_data/object_models/imhd/imhd_bps.pkl'
             with open(obj_info_path, 'rb') as f:
                 self.obj_info_imhd = joblib.load(f)
-            obj_info_path = osp.join('data', 'base_data', 'object_models', 'coco', '_info.json')
+            obj_info_path = 'data/COCO_2017/_info.json'
             with open(obj_info_path) as f:
                 self.obj_info_coco = json.load(f)
             self.obj_info = {**self.obj_info_behave, **self.obj_info_intercap, **self.obj_info_imhd, **self.obj_info_coco}

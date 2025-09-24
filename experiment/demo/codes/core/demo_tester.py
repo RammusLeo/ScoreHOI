@@ -12,7 +12,7 @@ from diffusion.scorehmr_diffusion import GaussianDiffusion
 from diffusion.scorehmr_diffusion_betas import GaussianDiffusionBetas
 from core.config import cfg, logger
 from models.templates import smplh, obj_dict
-from train_utils import AverageMeterDict, load_checkpoint
+from train_utils import AverageMeterDict, load_checkpoint, get_dataloader
 from funcs_utils import rotmat_to_6d, rot6d_to_rotmat, rot6d_to_aa, axis_angle_to_6d
 from vis_utils import vis_results_batch
 from eval_utils import eval_chamfer_distance, eval_contact_estimation, eval_contact_score
@@ -22,7 +22,7 @@ import time
 
 
 def prepare_pointnet_network(args, load_dir=''): 
-    from models.feature_backbone import get_backbone  
+    from lib.models.feature_backbone import get_backbone  
     # from train_utils import count_parameters
     model = get_backbone()
     # logger.info(f'# of model parameters: {count_parameters(model)}')
@@ -75,7 +75,7 @@ def prepare_diffusion_model(args, load_dir='', model_type='FC'):
 class BaseTester:
     def __init__(self, args, load_dir='', model_type="pointnet"):
         if model_type == "pointnet":
-            self.model = prepare_pointnet_network(args, load_dir)
+            self.model = prepare_pointnet_network(args, load_dir, False)
         else:
             raise Exception("Support pointnet backbone")
         self.model = self.model.cuda()

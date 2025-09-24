@@ -8,7 +8,7 @@ from einops import reduce
 from functools import partial
 
 from diffusion.diff_utils.utils import *
-from funcs_utils import rot6d_to_rotmat, rot6d_to_aa, rotmat_to_6d, batch_rodrigues
+from utils.funcs_utils import rot6d_to_rotmat, rot6d_to_aa, rotmat_to_6d, batch_rodrigues
 # from diffusion.diff_utils.geometry import aa_to_rotmat, rot6d_to_rotmat, rot6d_to_aa, rotmat_to_6d
 from diffusion.diff_utils.guidance_losses import keypoint_fitting_loss, multiview_loss, smoothness_loss, interaction_loss, object_mask_loss
 

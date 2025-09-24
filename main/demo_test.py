@@ -10,7 +10,6 @@ parser.add_argument('--dataset', type=str, default='behave', choices=['behave', 
 parser.add_argument('--checkpoint', type=str, default='', help='model path for evaluation')
 parser.add_argument('--exp', type=str, default='', help='assign experiments directory')
 parser.add_argument("--ckpt_path", type=str, required=True)
-parser.add_argument("--backbone_dir", type=str, default='')
 parser.add_argument("--sample_start", type=int, default=-1)
 parser.add_argument("--optim_iters" , type=int, default=-1)
 parser.add_argument("--ddim_step_size" , type=int, default=-1)
@@ -53,7 +52,7 @@ device = torch.device(f"cuda:0") if torch.cuda.is_available() else torch.device(
 # from core.base import TesterOptimizeIP
 from core.demo_tester import DemoTester
 # from core.diffusion_trainer import TesterOptimizeIP
-tester = DemoTester(args, load_dir=cfg.MODEL.weight_path,backbone_dir=args.backbone_dir,diffusion_load_dir=args.ckpt_path, device=device, model_type="pointnet", diff_model_type="IPFC_Obj")
+tester = DemoTester(args, load_dir=cfg.MODEL.weight_path, diffusion_load_dir=args.ckpt_path, device=device, model_type="pointnet", diff_model_type="IPFC_Obj")
 
 
 # Test ScoreHOI
