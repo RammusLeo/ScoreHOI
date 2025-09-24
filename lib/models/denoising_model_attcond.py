@@ -3,24 +3,18 @@ from torch import nn
 from .model_blocks import SinusoidalPosEmb, AttnResMLPBlock
 
 
-PREDICTORS = {
-    "prohmr": {"thetas_emb_dim": 2048, "betas_emb_dim": 2048},
-    "pare": {"thetas_emb_dim": 3072, "betas_emb_dim": 1536},
-}
-
 class FC(nn.Module):
     def __init__(self, cfg) -> None:
         super().__init__()
         self.use_betas = cfg.DIFFUSION.use_betas
-        img_feats = 'prohmr'
         hidden_dim = 2048
         # diffusion dimensions
         self.diffusion_dim = 52 * 6 + 6 + 3
         self.thetas_obj_dim = 52 * 6 + 6 +3
         self.betas_dim = 10 if self.use_betas else 0
         # image features
-        self.thetas_emb_dim = PREDICTORS[img_feats]["thetas_emb_dim"]
-        self.betas_emb_dim = PREDICTORS[img_feats]["betas_emb_dim"]
+        self.thetas_emb_dim = 2048
+        self.betas_emb_dim = 2048
 
         # SMPL thetas
         time_dim = self.thetas_obj_dim * 4
@@ -80,13 +74,6 @@ class FC(nn.Module):
         Returns:
             torch.Tensor : predicted noise with shape [B, P].
         """
-        # if self.use_betas:
-        #     thetas = x[:, :-10]
-        #     betas = x[:, -10:]
-        #     if self.split_img_emb:
-        #         thetas_emb = cond_emb[:, :3072]
-        #         cam_shape_emb = cond_emb[:, 3072:]
-        # else:
         thetas = x
         bs = x.shape[0]
         # cond_img_feat = y["cond_img_feats"]   # B，2048
@@ -101,33 +88,19 @@ class FC(nn.Module):
             thetas = block(thetas, tt, cond_emb)
         thetas = self.final_mlp(thetas)
         return thetas
-        # if self.use_betas:
-        #     betas = self.init_mlp_betas(betas)
-        #     tt_betas = self.time_mlp_betas(time)
-        #     for block in self.blocks_betas:
-        #         betas = block(
-        #             betas, tt_betas, cam_shape_emb if self.split_img_emb else cond_emb
-        #         )
-        #     betas = self.final_mlp_betas(betas)
-
-        #     thetas_betas = torch.cat((thetas, betas), dim=1)
-        #     return thetas_betas
-        # else:
-        #     return thetas
 
 class IPFC(nn.Module):
     def __init__(self, cfg) -> None:
         super().__init__()
         self.use_betas = cfg.DIFFUSION.use_betas
-        img_feats = 'prohmr'
         hidden_dim = 2048
         # diffusion dimensions
         self.diffusion_dim = 52 * 6 + 6 + 3
         self.thetas_obj_dim = 52 * 6 + 6 +3
         self.betas_dim = 10 if self.use_betas else 0
         # image features
-        self.thetas_emb_dim = PREDICTORS[img_feats]["thetas_emb_dim"]
-        self.betas_emb_dim = PREDICTORS[img_feats]["betas_emb_dim"]
+        self.thetas_emb_dim = 2048
+        self.betas_emb_dim = 2048
 
         # SMPL thetas
         time_dim = self.thetas_obj_dim * 4
@@ -190,13 +163,7 @@ class IPFC(nn.Module):
         Returns:
             torch.Tensor : predicted noise with shape [B, P].
         """
-        # if self.use_betas:
-        #     thetas = x[:, :-10]
-        #     betas = x[:, -10:]
-        #     if self.split_img_emb:
-        #         thetas_emb = cond_emb[:, :3072]
-        #         cam_shape_emb = cond_emb[:, 3072:]
-        # else:
+
         thetas = x
         bs = x.shape[0]
         cond_img_feat = y["cond_img_feats"]   # B，2048
@@ -211,19 +178,6 @@ class IPFC(nn.Module):
             thetas = block(thetas, tt, cond_emb, cond_img_feat)
         thetas = self.final_mlp(thetas)
         return thetas
-        # if self.use_betas:
-        #     betas = self.init_mlp_betas(betas)
-        #     tt_betas = self.time_mlp_betas(time)
-        #     for block in self.blocks_betas:
-        #         betas = block(
-        #             betas, tt_betas, cam_shape_emb if self.split_img_emb else cond_emb
-        #         )
-        #     betas = self.final_mlp_betas(betas)
-
-        #     thetas_betas = torch.cat((thetas, betas), dim=1)
-        #     return thetas_betas
-        # else:
-        #     return thetas
 
 class OBJFeatureExtractor(nn.Module):
     def __init__(self, input_dim, output_dim=2048):
@@ -258,15 +212,14 @@ class IPFC_Obj(nn.Module):
     def __init__(self, cfg) -> None:
         super().__init__()
         self.use_betas = cfg.DIFFUSION.use_betas
-        img_feats = 'prohmr'
         hidden_dim = 2048
         # diffusion dimensions
         self.diffusion_dim = 52 * 6 + 6 + 3
         self.thetas_obj_dim = 52 * 6 + 6 +3
         self.betas_dim = 10 if self.use_betas else 0
         # image features
-        self.thetas_emb_dim = PREDICTORS[img_feats]["thetas_emb_dim"]
-        self.betas_emb_dim = PREDICTORS[img_feats]["betas_emb_dim"]
+        self.thetas_emb_dim = 2048
+        self.betas_emb_dim = 2048
 
         # SMPL thetas
         time_dim = self.thetas_obj_dim * 4

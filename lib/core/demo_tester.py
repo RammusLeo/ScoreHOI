@@ -22,9 +22,9 @@ import time
 
 
 def prepare_pointnet_network(args, load_dir='', load_dir_backbone='', is_train=True): 
-    from models.model_pointnet import get_model  
+    from lib.models.feature_backbone import get_backbone  
     # from train_utils import count_parameters
-    model = get_model()
+    model = get_backbone()
     # logger.info(f'# of model parameters: {count_parameters(model)}')
     if load_dir:
         print('Loading checkpoint from', load_dir) 
@@ -43,24 +43,6 @@ def prepare_pointnet_network(args, load_dir='', load_dir_backbone='', is_train=T
         model.load_weights(checkpoint['model_state_dict'])
         print('Backbone loaded')
     return model
-
-def prepare_network(args, load_dir='', strict=True): 
-    from models.model import get_model  
-    model = get_model()
-    # logger.info(f'# of model parameters: {count_parameters(model)}')
-    if load_dir:
-        print('Loading checkpoint from', load_dir) 
-        checkpoint = load_checkpoint(load_dir=load_dir)
-        if args.not_continue:
-            checkpoint['epoch'] = 0
-        try:
-            model.load_weights(checkpoint['model_state_dict'],strict=strict)
-        except:
-            model.load_weights(checkpoint, strict=strict)
-    else:
-        assert False, 'Please provide a backbone checkpoint to load'
-    return model
-
 
 def prepare_diffusion_model(args, load_dir='', model_type='FC'):
     if model_type == 'FC':
@@ -84,10 +66,6 @@ def prepare_diffusion_model(args, load_dir='', model_type='FC'):
         checkpoint = load_checkpoint(load_dir)
         if args.not_continue:
             checkpoint['epoch'] = 0
-        # try:
-        #     diffusion_model.load_weights(checkpoint['model_state_dict'], strict=True)
-        # except:
-        #     diffusion_model.load_weights(checkpoint, strict=True)
         diffusion_model.load_weights(checkpoint['model_state_dict'], strict=False)
     else:
         checkpoint = None
@@ -95,11 +73,11 @@ def prepare_diffusion_model(args, load_dir='', model_type='FC'):
 
 
 class BaseTester:
-    def __init__(self, args, load_dir='', backbone_dir='',model_type="vanilla"):
-        if model_type == "vanilla":
-            self.model = prepare_network(args, load_dir, False)
-        elif model_type == "pointnet":
+    def __init__(self, args, load_dir='', backbone_dir='',model_type="pointnet"):
+        if model_type == "pointnet":
             self.model = prepare_pointnet_network(args, load_dir, backbone_dir, False)
+        else:
+            raise Exception("Support pointnet backbone")
         self.model = self.model.cuda()
         dataset = DemoDataset()
         self.val_loaders = [DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0, pin_memory=True, drop_last=False)]
@@ -116,7 +94,7 @@ class BaseTester:
                     eval_history[k].append(self.eval_vals[k])
 
 class DemoTester(BaseTester):
-    def __init__(self, args, load_dir='',backbone_dir='', diffusion_load_dir='', device='cuda', model_type="vanilla", diff_model_type="IPFC_Obj"):
+    def __init__(self, args, load_dir='',backbone_dir='', diffusion_load_dir='', device='cuda', model_type="pointnet", diff_model_type="IPFC_Obj"):
         super(DemoTester, self).__init__(args, load_dir,backbone_dir, model_type=model_type)         
         self.eval_metrics = cfg.TEST.eval_metrics
         self.eval_history = {}
@@ -131,7 +109,7 @@ class DemoTester(BaseTester):
 
         self.eval_vals_intermid = {}
 
-    def run(self,current_model=None, current_diffusion_model=None, eval_mode="vanilla"):
+    def run(self,current_model=None, current_diffusion_model=None, eval_mode="pointnet"):
         if current_model:
             self.model = current_model
         if current_diffusion_model:
@@ -139,7 +117,7 @@ class DemoTester(BaseTester):
         self.model.eval()
         self.diffusion_model = self.diffusion_model.to(self.device)
         self.diffusion_model.eval()
-        if eval_mode == "vanilla":
+        if eval_mode == "pointnet":
             for val_loader in self.val_loaders:
                 self.run_orig(val_loader)           
         elif eval_mode == "intermid":
@@ -603,13 +581,6 @@ class DemoTester(BaseTester):
         smpl_output = self.smplh_layer(betas=human_shape_, global_orient=human_pose_[:, :3], body_pose=human_pose_[:, 3:66], left_hand_pose=human_pose_[:, 66:111], right_hand_pose=human_pose_[:, 111:])
         smpl_verts, smpl_joints = smpl_output.vertices - smpl_output.joints[:, [smplh.root_joint_idx]], smpl_output.joints - smpl_output.joints[:, [smplh.root_joint_idx]]
         smpl_verts = smplh.downsample(smpl_verts)
-        # outputs={
-        #     "smpl_verts": smpl_verts.detach().cpu().numpy(),
-        #     'obj_pose': rot6d_to_rotmat(x_0[:, 52*6 : 52*6 + 6]).detach().cpu().numpy(),
-        #     'obj_trans': x_0[:, 52*6 + 6: 52*6+9].detach().cpu().numpy(),
-        #     'cam_trans': camera_translation.detach().cpu().numpy(),
-        # }
-
         outputs={
             "smpl_verts": smpl_verts,
             'obj_pose': x_0[:, 52*6 : 52*6 + 6],
